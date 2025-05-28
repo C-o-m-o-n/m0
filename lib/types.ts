@@ -1,10 +1,12 @@
 // Shared interfaces for future LangGraph compatibility
+export type UIComponent = {
+  type: "View" | "Text" | "TextInput" | "Button" | "Image";
+  props: Record<string, unknown>;
+  children?: UIComponent[];
+};
+
 export interface UISchema {
-  components: {
-    type: string; // "View", "TextInput", etc.
-    props: Record<string, unknown>;
-    children?: UISchema[];
-  }[];
+  components: UIComponent[];
   styles?: Record<string, unknown>;
 }
 
@@ -28,4 +30,18 @@ export interface Conversation {
   id: string
   title: string
   messages: message[]
+}
+
+export interface AgentState {
+  messages: message[];
+  prompt: string;
+  schema: UISchema | null;
+  code: string | null;
+  errors: string[];
+  validationPassed: boolean;
+}
+
+export interface NodeResult {
+  key: string;
+  result: unknown;
 }
