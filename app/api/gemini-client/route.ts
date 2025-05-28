@@ -1,84 +1,70 @@
 import { NextResponse } from "next/server";
-import { buildPrompt } from "../core/prompt-engine";
-// import { validateSchema } from "../core/schema-validator";
-import { GoogleGenAI } from "@google/genai";
-import { message } from "@/lib/types";
-// Allow streaming responses up to 30 seconds
+import { createWorkflow } from "../core/agentic-core/workflow";
+import { AgentState } from "@/lib/types";
+
 export const maxDuration = 30;
 
 export async function POST(req: Request) {
   try {
-    const { messages, modelVersion = "gemini-2.0-flash" } = await req.json();
+    const { messages } = await req.json();
+    const lastMessage = messages[messages.length - 1].content;
 
-    // Get API key from environment variables
-    const apiKey = process.env.GEMINI_API_KEY;
-
-    if (!apiKey) {
-      console.error("Missing Gemini API key");
-      return NextResponse.json(
-        {
-          error:
-            "Missing API key. Please add GOOGLE_API_KEY to your environment variables.",
-        },
-        { status: 500 }
-      );
-    }
-
-    // Initialize the Gemini API
-    const genAI = new GoogleGenAI({
-      apiKey,
-    });
-
-    // Format messages for Gemini
-    const formattedMessages = messages.map((message: message) => ({
-      role: message.role === "user" ? "user" : "model",
-      parts: [{ text: buildPrompt(message.content) }],
-    }));
-
-    // Create a chat session
-    const chat = genAI.chats.create({
-      model: modelVersion,
-      history: formattedMessages.slice(0, -1),
-    });
-
-    // Get the last message (the one we're responding to)
-    const lastMessage = formattedMessages[formattedMessages.length - 1];
-
-    // Create a new ReadableStream for streaming the response
+    // Initialize workflow
+    const workflow = await createWorkflow();
+    
+    // Create a new ReadableStream for streaming
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          const result = await chat.sendMessageStream({ message: lastMessage });
+          // Initial state
+          const initialState: AgentState = {
+            messages,
+            prompt: lastMessage,
+            schema: null,
+            code: null,
+            errors: [],
+            validationPassed: false
+          };
 
-          for await (const chunk of result) {
-            const text = chunk.text;
+          // Generate a unique thread ID for this conversation
+          const threadId = Date.now().toString();
 
-            if (text) {
-              controller.enqueue(
-                new TextEncoder().encode(
-                  `data: ${JSON.stringify({ text })}\n\n`
-                )
-              );
+          // Execute workflow with thread_id configuration
+          const streamResult = await workflow.stream(
+            initialState,
+            { configurable: { thread_id: threadId } }
+          );
+          
+          for await (const step of streamResult) {
+            // The step is the current state
+            const state = step as AgentState;
+            
+            // Send updates to client if there are new messages
+            if (state.messages && state.messages.length > 0) {
+              const lastMsg = state.messages[state.messages.length - 1];
+              if (lastMsg.role === "assistant") {
+                controller.enqueue(
+                  new TextEncoder().encode(
+                    `data: ${JSON.stringify({ text: lastMsg.content })}\n\n`
+                  )
+                );
+              }
             }
           }
 
           controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
           controller.close();
         } catch (error) {
-          console.error("Error streaming response:", error);
+          console.error("Error in workflow:", error);
           controller.enqueue(
             new TextEncoder().encode(
-              `data: ${JSON.stringify({
-                error: error || "Error generating response",
-              })}\n\n`
+              `data: ${JSON.stringify({ error: "Workflow execution failed" })}\n\n`
             )
           );
           controller.close();
         }
       },
     });
-
-    console.log("Streaming response started");
 
     return new Response(stream, {
       headers: {
@@ -87,6 +73,7 @@ export async function POST(req: Request) {
         Connection: "keep-alive",
       },
     });
+
   } catch (error) {
     console.error("API route error:", error);
     return NextResponse.json(
