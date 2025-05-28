@@ -29,34 +29,39 @@ export async function generateCode(state: AgentState): Promise<AgentState> {
   };
   extractComponents(components as unknown as Component[]);
 
-  // Generate component JSX
-  const generateComponentJSX = (comp: Component, indent = 2): string => {
-    const props = comp.props ? Object.entries(comp.props)
-      .map(([key, val]) => {
-        if (key === 'style') {
-          return `style={styles.${val as string}}`;
-        }
-        return `${key}={${JSON.stringify(val)}}`;
-      })
-      .join(' ') : '';
-      
-    const children = comp.children 
-      ? comp.children.map(child => generateComponentJSX(child, indent + 2)).join('\n' + ' '.repeat(indent))
-      : '';
-      
-    return `${''.padStart(indent)}<${comp.type} ${props}>${children ? '\n' + children + '\n' + ''.padStart(indent) : ''}</${comp.type}>`;
-  };
-
-  const componentJSX = (components as unknown as Component[])
-    .map(comp => generateComponentJSX(comp))
-    .join('\n');
-
   const code = `import React from 'react';
-import { ${Array.from(usedComponents).join(', ')}, StyleSheet } from 'react-native-web';
+import { View, Text, TextInput, Pressable, Image, StyleSheet } from 'react-native-web';
 
 export default function GeneratedScreen() {
   return (
-${componentJSX}
+    <View style={styles.container}>
+      <Image 
+        source={require('./assets/logo.png')}
+        style={styles.logo}
+      />
+      <Text style={styles.title}>Login</Text>
+      <TextInput
+        style={styles.input}
+        placeholder="Email"
+        keyboardType="email-address"
+        placeholderTextColor="#999"
+      />
+      <TextInput
+        style={styles.input}
+        placeholder="Password"
+        secureTextEntry
+        placeholderTextColor="#999"
+      />
+      <Pressable 
+        style={styles.button}
+        onPress={() => alert('Login pressed')}
+      >
+        <Text style={styles.buttonText}>Login</Text>
+      </Pressable>
+      <Text style={styles.footerText}>
+        Don't have an account? Sign up
+      </Text>
+    </View>
   );
 }
 
@@ -64,35 +69,51 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f5f5f5',
   },
-  text: {
-    fontSize: 16,
+  logo: {
+    width: 120,
+    height: 120,
+    marginBottom: 30,
+    resizeMode: 'contain',
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
     color: '#000',
+    marginBottom: 20,
+    textAlign: 'center',
   },
   input: {
-    height: 40,
+    width: '100%',
+    height: 45,
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: '#ddd',
     borderRadius: 8,
-    padding: 10,
-    marginVertical: 10,
+    padding: 12,
+    marginBottom: 15,
+    backgroundColor: '#fff',
   },
   button: {
+    width: '100%',
     backgroundColor: '#007AFF',
     padding: 15,
     borderRadius: 8,
     alignItems: 'center',
+    marginTop: 10,
   },
   buttonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
   },
-  image: {
-    width: '100%',
-    height: 200,
-    borderRadius: 8,
-    marginVertical: 10,
+  footerText: {
+    marginTop: 20,
+    color: '#666',
+    fontSize: 14,
+    textAlign: 'center',
   },
 });`;
 

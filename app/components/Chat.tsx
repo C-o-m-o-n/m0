@@ -1,130 +1,161 @@
-import { FC, useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
+import { View, Text, TextInput, ScrollView, Pressable, StyleSheet } from 'react-native-web';
 import { message } from '@/lib/types';
-import ChatMessage from './ChatMessage';
-import ChatInput from './ChatInput';
-import Preview from './Preview';
 
-const Chat: FC = () => {
-  const [messages, setMessages] = useState<message[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+interface ChatProps {
+  messages: message[];
+  onSendMessage: (content: string) => void;
+}
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+export default function Chat({ messages, onSendMessage }: ChatProps) {
+  const [input, setInput] = useState('');
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  const handleSendMessage = async (content: string) => {
-    const userMessage: message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content
-    };
-
-    setMessages(prev => [...prev, userMessage]);
-    setIsLoading(true);
-
-    try {
-      const response = await fetch('/api/gemini-client', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messages: [...messages, userMessage]
-        })
-      });
-
-      if (!response.body) throw new Error('No response body');
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let assistantMessage = '';
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(5);
-            if (data === '[DONE]') continue;
-
-            try {
-              const parsed = JSON.parse(data);
-              if (parsed.text) {
-                assistantMessage = parsed.text;
-                setMessages(prev => {
-                  const lastMessage = prev[prev.length - 1];
-                  if (lastMessage?.role === 'assistant') {
-                    return [...prev.slice(0, -1), {
-                      id: lastMessage.id,
-                      role: 'assistant',
-                      content: assistantMessage
-                    }];
-                  } else {
-                    return [...prev, {
-                      id: Date.now().toString(),
-                      role: 'assistant',
-                      content: assistantMessage
-                    }];
-                  }
-                });
-              }
-            } catch (e) {
-              console.error('Error parsing SSE message:', e);
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Error sending message:', error);
-    } finally {
-      setIsLoading(false);
-    }
+  const handleSend = () => {
+    if (!input.trim()) return;
+    onSendMessage(input.trim());
+    setInput('');
   };
 
   return (
-    <div className="flex h-screen bg-white dark:bg-gray-900">
-      {/* Chat section */}
-      <div className="flex flex-col w-1/2 border-r border-gray-200 dark:border-gray-700">
-        {/* Messages container */}
-        <div className="flex-1 overflow-y-auto pb-36">
-          {messages.length === 0 ? (
-            <div className="h-full flex items-center justify-center">
-              <div className="text-center space-y-3 max-w-xl mx-auto px-4">
-                <h1 className="text-4xl font-bold text-gray-900 dark:text-white">
-                  UI Generator Assistant
-                </h1>
-                <p className="text-gray-600 dark:text-gray-400">
-                  Describe the UI you want to create, and I{"'"}ll help you generate it.
-                </p>
-              </div>
-            </div>
-          ) : (
-            messages.map(message => (
-              <ChatMessage key={message.id} message={message} />
-            ))
-          )}
-          <div ref={messagesEndRef} />
-        </div>
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.title}>UI Generator</Text>
+        <Text style={styles.version}>v0.1</Text>
+      </View>
 
-        {/* Input container */}
-        <ChatInput onSend={handleSendMessage} disabled={isLoading} />
-      </div>
+      {/* Messages */}
+      <ScrollView style={styles.messages}>
+        {messages.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyTitle}>Welcome to UI Generator</Text>
+            <Text style={styles.emptyText}>
+              Describe the UI you want to create, and I'll help you generate it.
+            </Text>
+          </View>
+        ) : (
+          messages.map((msg) => (
+            <View
+              key={msg.id}
+              style={[
+                styles.message,
+                msg.role === 'user' ? styles.userMessage : styles.assistantMessage
+              ]}
+            >
+              <Text style={styles.messageText}>{msg.content}</Text>
+            </View>
+          ))
+        )}
+      </ScrollView>
 
-      {/* Preview section */}
-      <div className="w-1/2 h-full">
-        <Preview messages={messages} />
-      </div>
-    </div>
+      {/* Input */}
+      <View style={styles.inputContainer}>
+        <TextInput
+          style={styles.input}
+          value={input}
+          onChangeText={setInput}
+          placeholder="Type a message..."
+          placeholderTextColor="#666"
+          multiline
+          onSubmitEditing={handleSend}
+        />
+        <Pressable style={styles.sendButton} onPress={handleSend}>
+          <Text style={styles.sendButtonText}>Send</Text>
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
-export default Chat; 
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#0F1117',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2D2D2D',
+  },
+  title: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  version: {
+    color: '#666',
+    fontSize: 14,
+  },
+  messages: {
+    flex: 1,
+    padding: 16,
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  emptyTitle: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  emptyText: {
+    color: '#666',
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  message: {
+    marginBottom: 16,
+    padding: 12,
+    borderRadius: 8,
+    maxWidth: '80%',
+  },
+  userMessage: {
+    backgroundColor: '#2D2D2D',
+    alignSelf: 'flex-end',
+  },
+  assistantMessage: {
+    backgroundColor: '#1E1E1E',
+    alignSelf: 'flex-start',
+  },
+  messageText: {
+    color: '#fff',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  inputContainer: {
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#2D2D2D',
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+  },
+  input: {
+    flex: 1,
+    backgroundColor: '#1E1E1E',
+    borderRadius: 8,
+    padding: 12,
+    color: '#fff',
+    fontSize: 14,
+    marginRight: 12,
+    maxHeight: 120,
+    minHeight: 40,
+  },
+  sendButton: {
+    backgroundColor: '#2D2D2D',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+  },
+  sendButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+}); 

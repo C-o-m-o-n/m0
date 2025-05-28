@@ -1,11 +1,22 @@
-import { FC, useEffect, useState } from 'react';
+import React, { FC, useEffect, useState } from 'react';
 import { View, Text, TextInput, Button, Image, StyleSheet } from 'react-native-web';
 import { message } from '@/lib/types';
-import React from 'react';
 
 interface PreviewProps {
   messages: message[];
 }
+
+type Dependencies = {
+  'react': typeof React;
+  'react-native-web': {
+    View: typeof View;
+    Text: typeof Text;
+    TextInput: typeof TextInput;
+    Button: typeof Button;
+    Image: typeof Image;
+    StyleSheet: typeof StyleSheet;
+  };
+};
 
 const Preview: FC<PreviewProps> = ({ messages }) => {
   const [Component, setComponent] = useState<React.ComponentType | null>(null);
@@ -20,33 +31,39 @@ const Preview: FC<PreviewProps> = ({ messages }) => {
     try {
       // Extract the code from the message content
       const codeMatch = lastMessage.content.match(/```(?:jsx|tsx)?\n([\s\S]*?)\n```/);
-      if (!codeMatch) return;
+      if (!codeMatch) {
+        setError('No valid code block found in the message');
+        return;
+      }
 
       const code = codeMatch[1];
-      
-      // Create a new component from the code
-      const componentCode = `
-        const { View, Text, TextInput, Button, Image, StyleSheet } = require('react-native-web');
+
+      // Create the module code with proper exports
+      const moduleCode = `
+        const React = require('react');
+        const ReactNativeWeb = require('react-native-web');
+        const { View, Text, TextInput, Button, Image, StyleSheet } = ReactNativeWeb;
+
         ${code}
+
         return GeneratedScreen;
       `;
 
       // Create and evaluate the component
-      const createComponent = new Function('React', 'require', componentCode);
+      const createComponent = new Function('require', moduleCode);
       
-      const dependencies = {
+      const dependencies: Dependencies = {
+        'react': React,
         'react-native-web': {
           View, Text, TextInput, Button, Image, StyleSheet
         }
       };
 
-      const mockRequire = (moduleName: string) => {
-        if (moduleName === 'react') return React;
-        if (moduleName === 'react-native-web') return dependencies['react-native-web'];
-        throw new Error(`Module ${moduleName} not found`);
+      const mockRequire = (moduleName: keyof Dependencies) => {
+        return dependencies[moduleName];
       };
 
-      const GeneratedComponent = createComponent(React, mockRequire);
+      const GeneratedComponent = createComponent(mockRequire) as React.ComponentType;
       setComponent(() => GeneratedComponent);
       setError(null);
     } catch (err) {
@@ -58,7 +75,9 @@ const Preview: FC<PreviewProps> = ({ messages }) => {
   if (error) {
     return (
       <View style={styles.container}>
-        <Text style={styles.error}>Error: {error}</Text>
+        <View style={styles.errorContainer}>
+          <Text style={styles.error}>Error: {error}</Text>
+        </View>
       </View>
     );
   }
@@ -66,9 +85,11 @@ const Preview: FC<PreviewProps> = ({ messages }) => {
   if (!Component) {
     return (
       <View style={styles.container}>
-        <Text style={styles.placeholder}>
-          Your preview will appear here
-        </Text>
+        <View style={styles.placeholderContainer}>
+          <Text style={styles.placeholder}>
+            Your preview will appear here
+          </Text>
+        </View>
       </View>
     );
   }
@@ -119,15 +140,25 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingTop: 50,
   },
+  placeholderContainer: {
+    padding: 20,
+    backgroundColor: 'white',
+    borderRadius: 10,
+  },
   placeholder: {
     fontSize: 16,
     color: '#666',
   },
+  errorContainer: {
+    padding: 20,
+    backgroundColor: '#fee',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#fcc',
+  },
   error: {
     fontSize: 14,
-    color: '#ff0000',
-    maxWidth: '80%',
-    textAlign: 'center',
+    color: '#c00',
   },
 });
 
